@@ -38,7 +38,7 @@ const LoginPage = () => {
     // We'll use a special query param to tell auth service
     // this request is coming from admin portal
     window.location.href =
-      "http://localhost:3001/api/auth/google?portal=admin";
+      "http://localhost:8000/api/auth/google?portal=admin";
   };
 
   return (

@@ -5,20 +5,23 @@ const {
   getAllCourts,
   getNearbyCourts,
   deleteCourt,
+  updateSlot,
+  getSingleCourt,
 } = require('../controllers/court.controller');
 
 const router = express.Router();
 
-// PUBLIC routes — no auth needed
-// Users call this to see courts near them
-router.get('/nearby', getNearbyCourts);
+// ✅ CORRECT ORDER
+// Specific routes FIRST
+router.get('/nearby', getNearbyCourts);        // /nearby
+router.get('/all', adminAuth, getAllCourts);    // /all
 
-// ADMIN routes — protected by adminAuth middleware
-// adminAuth runs BEFORE the controller
-// If adminAuth fails → returns 401/403, controller never runs
-// If adminAuth passes → controller runs
-router.get('/all', adminAuth, getAllCourts);
+// Dynamic routes LAST
+router.get('/:courtId', getSingleCourt);       // /:courtId
+
+// Other routes
 router.post('/add', adminAuth, addCourt);
 router.delete('/:courtId', adminAuth, deleteCourt);
+router.patch('/:courtId/slots/:slotId', updateSlot);
 
 module.exports = router;

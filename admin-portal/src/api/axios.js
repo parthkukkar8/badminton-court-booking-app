@@ -1,19 +1,28 @@
 import axios from "axios";
 
-// Base URL of our court service
 const API = axios.create({
-  baseURL: "http://localhost:3002/api",
+  // ← Changed to gateway port 8000
+  baseURL: "http://localhost:8000/api",
 });
 
-// Before every request, attach the token from localStorage
-// So we don't have to manually add it every time
 API.interceptors.request.use((config) => {
   const token = localStorage.getItem("adminToken");
   if (token) {
-    // This is how our adminAuth middleware expects it
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
+
+API.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem("adminToken");
+      localStorage.removeItem("admin");
+      window.location.href = "/";
+    }
+    return Promise.reject(error);
+  }
+);
 
 export default API;

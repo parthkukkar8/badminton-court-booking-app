@@ -97,4 +97,62 @@ const deleteCourt = async (req, res) => {
   }
 };
 
-module.exports = { addCourt, getAllCourts, getNearbyCourts, deleteCourt };
+// Update slot booked status
+const updateSlot = async (req, res) => {
+  try {
+    const { courtId, slotId } = req.params;
+    const { isBooked } = req.body;
+
+    const court = await Court.findById(courtId);
+    if (!court) {
+      return res.status(404).json({ message: 'Court not found' });
+    }
+
+    const slot = court.slots.id(slotId);
+    if (!slot) {
+      return res.status(404).json({ message: 'Slot not found' });
+    }
+
+    slot.isBooked = isBooked;
+    await court.save();
+
+    // ← Clear ALL location based Redis caches
+    // We don't know which cache keys exist (they're based on lat/lng)
+    // So we delete all keys that start with "courts:"
+    const keys = await redisClient.keys('courts:*');
+    if (keys.length > 0) {
+      await redisClient.del(...keys);
+    }
+    console.log(`✅ Cleared ${keys.length} Redis cache keys after slot update`);
+
+    res.json({ message: 'Slot updated', slot });
+
+  } catch (error) {
+    res.status(500).json({ 
+      message: 'Failed to update slot', 
+      error: error.message 
+    });
+  }
+};
+
+// Get single court by ID (fresh data, no cache)
+const getSingleCourt = async (req, res) => {
+  try {
+    const court = await Court.findById(req.params.courtId);
+    if (!court) {
+      return res.status(404).json({ message: 'Court not found' });
+    }
+    res.json({ court });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch court' });
+  }
+};
+
+module.exports = { 
+  addCourt, 
+  getAllCourts, 
+  getNearbyCourts, 
+  deleteCourt, 
+  updateSlot,
+  getSingleCourt  // ← add this
+};

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import CourtCard from "../components/CourtCard";
 import API from "../api/axios";
@@ -7,55 +7,49 @@ import API from "../api/axios";
 const CourtsPage = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [courts, setCourts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
-  // Location state
-  const [location, setLocation] = useState(null);
+  const [userLocation, setUserLocation] = useState(null);
   const [locationStatus, setLocationStatus] = useState("idle");
-  // idle | loading | granted | denied
 
-  // When page loads → ask for location
   useEffect(() => {
     getLocation();
   }, []);
 
-  // When location is found → fetch courts
   useEffect(() => {
-    if (location) {
-      fetchNearbyCourts(location.latitude, location.longitude);
+    if (locationStatus === "granted" && userLocation) {
+      fetchNearbyCourts(userLocation.latitude, userLocation.longitude);
     }
-  }, [location]);
+  }, [location.key]);
+
+  useEffect(() => {
+    if (userLocation) {
+      fetchNearbyCourts(userLocation.latitude, userLocation.longitude);
+    }
+  }, [userLocation]);
 
   const getLocation = () => {
     setLocationStatus("loading");
-
-    // Check if browser supports geolocation
     if (!navigator.geolocation) {
       setError("Your browser doesn't support location.");
       setLocationStatus("denied");
       return;
     }
-
-    // Ask browser for user's current location
     navigator.geolocation.getCurrentPosition(
-      // Success → got location
       (position) => {
-        setLocation({
+        setUserLocation({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
         });
         setLocationStatus("granted");
       },
-      // Error → user denied or something went wrong
       (err) => {
         console.error("Location error:", err);
         setLocationStatus("denied");
-        setError(
-          "Location access denied. Please allow location to see nearby courts."
-        );
+        setError("Location access denied.");
       }
     );
   };
@@ -63,31 +57,20 @@ const CourtsPage = () => {
   const fetchNearbyCourts = async (latitude, longitude) => {
     setLoading(true);
     setError("");
-
     try {
-      // Call our court service
-      // maxDistance = 10000 meters = 10km radius
       const res = await API.get("/courts/nearby", {
-        params: {
-          latitude,
-          longitude,
-          maxDistance: 10000,
-        },
+        params: { latitude, longitude, maxDistance: 10000 },
       });
-
       setCourts(res.data.courts);
-
     } catch (err) {
       setError("Failed to fetch nearby courts. Please try again.");
-      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
   const handleCourtSelect = (court) => {
-    // Phase 4 — will navigate to booking page
-    alert(`Booking for ${court.name} coming in Phase 4!`);
+    navigate("/slots", { state: court });
   };
 
   const handleLogout = () => {
@@ -96,34 +79,51 @@ const CourtsPage = () => {
   };
 
   return (
-    <div style={styles.container}>
+    <div style={styles.root}>
+      {/* Background */}
+      <div style={styles.bgGradient} />
+      <div style={styles.bgGrid} />
 
       {/* Navbar */}
-      <div style={styles.navbar}>
-        <div style={styles.navLeft}>
-          <span style={styles.logo}>🏸 BadmintonBook</span>
+      <nav style={styles.navbar}>
+        <div style={styles.navInner}>
+          <div style={styles.navLogo}>
+            <span style={{ fontSize: "22px" }}>🏸</span>
+            <span style={styles.navLogoText}>BadmintonBook</span>
+          </div>
+          <div style={styles.navLinks}>
+            <button style={{ ...styles.navLink, ...styles.navLinkActive }}>
+              Courts
+            </button>
+            <button
+              style={styles.navLink}
+              onClick={() => navigate("/bookings")}
+            >
+              My Bookings
+            </button>
+          </div>
+          <div style={styles.navRight}>
+            <img
+              src={user?.avatar}
+              alt={user?.name}
+              style={styles.avatar}
+              onError={(e) => {
+                e.target.src = `https://ui-avatars.com/api/?name=${user?.name}&background=166534&color=fff`;
+              }}
+            />
+            <span style={styles.userName}>{user?.name}</span>
+            <button style={styles.logoutBtn} onClick={handleLogout}>
+              Logout
+            </button>
+          </div>
         </div>
-        <div style={styles.navRight}>
-          <img
-            src={user?.avatar}
-            alt={user?.name}
-            style={styles.avatar}
-            onError={(e) => {
-              e.target.src = `https://ui-avatars.com/api/?name=${user?.name}`;
-            }}
-          />
-          <span style={styles.userName}>{user?.name}</span>
-          <button style={styles.logoutBtn} onClick={handleLogout}>
-            Logout
-          </button>
-        </div>
-      </div>
+      </nav>
 
       {/* Main Content */}
       <div style={styles.content}>
 
-        {/* Location Status */}
-        {locationStatus === "loading" && (
+        {/* Location Loading */}
+        {(locationStatus === "idle" || locationStatus === "loading") && (
           <div style={styles.statusBox}>
             <div style={styles.statusIcon}>📍</div>
             <h3 style={styles.statusTitle}>Finding your location...</h3>
@@ -133,34 +133,52 @@ const CourtsPage = () => {
           </div>
         )}
 
+        {/* Location Denied */}
         {locationStatus === "denied" && (
           <div style={styles.errorBox}>
             <div style={styles.statusIcon}>🚫</div>
-            <h3 style={styles.statusTitle}>Location Access Denied</h3>
-            <p style={styles.statusText}>{error}</p>
+            <h3 style={styles.statusTitle}>Location Access Blocked</h3>
+            <p style={styles.statusText}>
+              You have blocked location access. To see nearby courts,
+              please reset the permission:
+            </p>
+            <div style={styles.instructionsBox}>
+              <p style={styles.instructionStep}>
+                1️⃣ Click the <strong>🔒 lock icon</strong> in the address bar
+              </p>
+              <p style={styles.instructionStep}>
+                2️⃣ Find <strong>"Location"</strong> → change to{" "}
+                <strong>"Allow"</strong>
+              </p>
+              <p style={styles.instructionStep}>
+                3️⃣ <strong>Refresh the page</strong> and try again
+              </p>
+            </div>
             <button style={styles.retryBtn} onClick={getLocation}>
-              Try Again
+              🔄 I've allowed it, Try Again
             </button>
           </div>
         )}
 
-        {/* Courts List */}
+        {/* Courts Section */}
         {locationStatus === "granted" && (
           <>
             {/* Header */}
             <div style={styles.header}>
               <div>
-                <h2 style={styles.title}>Courts Near You</h2>
-                <p style={styles.subtitle}>
+                <h1 style={styles.headerTitle}>Courts Near You</h1>
+                <p style={styles.headerSubtitle}>
                   📍 Showing courts within 10km of your location
                 </p>
               </div>
               <button
                 style={styles.refreshBtn}
-                onClick={() => fetchNearbyCourts(
-                  location.latitude,
-                  location.longitude
-                )}
+                onClick={() =>
+                  fetchNearbyCourts(
+                    userLocation.latitude,
+                    userLocation.longitude
+                  )
+                }
               >
                 🔄 Refresh
               </button>
@@ -169,17 +187,17 @@ const CourtsPage = () => {
             {/* Loading */}
             {loading && (
               <div style={styles.loadingRow}>
-                <span>🔍 Searching nearby courts...</span>
+                🔍 Searching nearby courts...
               </div>
             )}
 
-            {/* No Courts Found */}
+            {/* No Courts */}
             {!loading && courts.length === 0 && (
               <div style={styles.emptyBox}>
                 <div style={styles.statusIcon}>🏸</div>
                 <h3 style={styles.statusTitle}>No courts found nearby</h3>
                 <p style={styles.statusText}>
-                  There are no badminton courts within 10km of your location yet.
+                  No badminton courts within 10km of your location yet.
                 </p>
               </div>
             )}
@@ -188,7 +206,8 @@ const CourtsPage = () => {
             {!loading && courts.length > 0 && (
               <>
                 <p style={styles.foundText}>
-                  Found {courts.length} court{courts.length > 1 ? "s" : ""} near you
+                  Found {courts.length} court
+                  {courts.length > 1 ? "s" : ""} near you
                 </p>
                 <div style={styles.grid}>
                   {courts.map((court) => (
@@ -196,7 +215,7 @@ const CourtsPage = () => {
                       key={court._id}
                       court={court}
                       onSelect={handleCourtSelect}
-                      userLocation={location}
+                      userLocation={userLocation}
                     />
                   ))}
                 </div>
@@ -205,38 +224,91 @@ const CourtsPage = () => {
           </>
         )}
 
-        {/* Call to Register Court Banner */}
+        {/* Banner */}
         <div style={styles.banner}>
           <span>🏸 Want to list your court?</span>
           <strong> Call us: 6283382129</strong>
         </div>
-
       </div>
+
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
+      `}</style>
     </div>
   );
 };
 
 const styles = {
-  container: {
+  root: {
     minHeight: "100vh",
-    backgroundColor: "#f0fdf4",
+    backgroundColor: "#0a0f0a",
+    fontFamily: "'DM Sans', sans-serif",
+    position: "relative",
   },
+  bgGradient: {
+    position: "fixed",
+    inset: 0,
+    background:
+      "radial-gradient(ellipse 80% 40% at 50% -10%, rgba(22,163,74,0.2) 0%, transparent 70%)",
+    pointerEvents: "none",
+  },
+  bgGrid: {
+    position: "fixed",
+    inset: 0,
+    backgroundImage:
+      "linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)",
+    backgroundSize: "48px 48px",
+    pointerEvents: "none",
+  },
+
+  // Navbar
   navbar: {
-    backgroundColor: "white",
-    padding: "16px 32px",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
     position: "sticky",
     top: 0,
-    zIndex: 10,
+    zIndex: 100,
+    backgroundColor: "rgba(10,15,10,0.85)",
+    backdropFilter: "blur(20px)",
+    borderBottom: "1px solid rgba(255,255,255,0.06)",
   },
-  navLeft: {},
-  logo: {
-    fontSize: "20px",
+  navInner: {
+    maxWidth: "1200px",
+    margin: "0 auto",
+    padding: "0 24px",
+    height: "64px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  navLogo: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+  },
+  navLogoText: {
+    fontFamily: "'Syne', sans-serif",
+    fontSize: "18px",
     fontWeight: "700",
-    color: "#166534",
+    color: "#ffffff",
+    letterSpacing: "-0.5px",
+  },
+  navLinks: {
+    display: "flex",
+    gap: "4px",
+  },
+  navLink: {
+    backgroundColor: "transparent",
+    border: "none",
+    color: "rgba(255,255,255,0.5)",
+    fontSize: "14px",
+    fontFamily: "'DM Sans', sans-serif",
+    padding: "8px 16px",
+    borderRadius: "8px",
+    cursor: "pointer",
+    transition: "all 0.2s",
+  },
+  navLinkActive: {
+    color: "#ffffff",
+    backgroundColor: "rgba(255,255,255,0.06)",
   },
   navRight: {
     display: "flex",
@@ -247,120 +319,159 @@ const styles = {
     width: "32px",
     height: "32px",
     borderRadius: "50%",
-    border: "2px solid #16a34a",
+    border: "2px solid rgba(22,163,74,0.5)",
   },
   userName: {
     fontSize: "14px",
-    color: "#374151",
+    color: "rgba(255,255,255,0.7)",
     fontWeight: "500",
   },
   logoutBtn: {
-    backgroundColor: "#fee2e2",
-    color: "#dc2626",
-    border: "none",
-    borderRadius: "6px",
+    backgroundColor: "rgba(239,68,68,0.1)",
+    color: "#f87171",
+    border: "1px solid rgba(239,68,68,0.2)",
+    borderRadius: "8px",
     padding: "6px 14px",
     cursor: "pointer",
     fontSize: "13px",
+    fontFamily: "'DM Sans', sans-serif",
   },
+
+  // Content
   content: {
-    maxWidth: "1100px",
+    maxWidth: "1200px",
     margin: "0 auto",
-    padding: "32px 16px",
+    padding: "40px 24px",
+    position: "relative",
+    zIndex: 1,
   },
+
+  // Status boxes
   statusBox: {
     textAlign: "center",
-    padding: "60px 20px",
-    backgroundColor: "white",
-    borderRadius: "16px",
-    boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+    padding: "80px 20px",
+    backgroundColor: "rgba(255,255,255,0.02)",
+    borderRadius: "20px",
+    border: "1px solid rgba(255,255,255,0.06)",
   },
   errorBox: {
     textAlign: "center",
     padding: "60px 20px",
-    backgroundColor: "white",
-    borderRadius: "16px",
-    boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
-    border: "1px solid #fecaca",
+    backgroundColor: "rgba(255,255,255,0.02)",
+    borderRadius: "20px",
+    border: "1px solid rgba(239,68,68,0.15)",
   },
   statusIcon: {
     fontSize: "48px",
     marginBottom: "16px",
   },
   statusTitle: {
+    fontFamily: "'Syne', sans-serif",
     fontSize: "20px",
-    color: "#111827",
+    color: "#ffffff",
     margin: "0 0 8px 0",
   },
   statusText: {
-    color: "#6b7280",
+    color: "rgba(255,255,255,0.4)",
     margin: "0 0 20px 0",
+    fontSize: "14px",
+  },
+  instructionsBox: {
+    backgroundColor: "rgba(255,255,255,0.03)",
+    border: "1px solid rgba(255,255,255,0.06)",
+    borderRadius: "12px",
+    padding: "16px 24px",
+    marginBottom: "20px",
+    textAlign: "left",
+    maxWidth: "420px",
+    margin: "0 auto 20px auto",
+  },
+  instructionStep: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: "14px",
+    margin: "8px 0",
+    lineHeight: "1.6",
   },
   retryBtn: {
     backgroundColor: "#16a34a",
     color: "white",
     border: "none",
-    borderRadius: "8px",
+    borderRadius: "10px",
     padding: "10px 24px",
     cursor: "pointer",
     fontSize: "14px",
+    fontFamily: "'DM Sans', sans-serif",
   },
+
+  // Header
   header: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: "24px",
+    marginBottom: "32px",
   },
-  title: {
-    margin: "0 0 4px 0",
-    fontSize: "24px",
-    color: "#111827",
+  headerTitle: {
+    fontFamily: "'Syne', sans-serif",
+    fontSize: "32px",
+    fontWeight: "800",
+    color: "#ffffff",
+    margin: "0 0 6px 0",
+    letterSpacing: "-1px",
   },
-  subtitle: {
+  headerSubtitle: {
     margin: 0,
-    color: "#6b7280",
+    color: "rgba(255,255,255,0.4)",
     fontSize: "14px",
   },
   refreshBtn: {
-    backgroundColor: "white",
-    border: "1px solid #e5e7eb",
-    borderRadius: "8px",
-    padding: "8px 16px",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: "10px",
+    padding: "10px 18px",
     cursor: "pointer",
-    fontSize: "14px",
-    color: "#374151",
+    fontSize: "13px",
+    color: "rgba(255,255,255,0.6)",
+    fontFamily: "'DM Sans', sans-serif",
   },
+
+  // Courts
   loadingRow: {
     textAlign: "center",
-    padding: "40px",
-    color: "#6b7280",
-    fontSize: "16px",
+    padding: "60px",
+    color: "rgba(255,255,255,0.4)",
+    fontSize: "15px",
   },
   emptyBox: {
     textAlign: "center",
-    padding: "60px 20px",
-    backgroundColor: "white",
-    borderRadius: "16px",
-    border: "1px dashed #d1fae5",
+    padding: "80px 20px",
+    backgroundColor: "rgba(255,255,255,0.02)",
+    borderRadius: "20px",
+    border: "1px dashed rgba(22,163,74,0.2)",
   },
   foundText: {
-    color: "#6b7280",
-    fontSize: "14px",
+    color: "rgba(255,255,255,0.3)",
+    fontSize: "13px",
     marginBottom: "16px",
+    textTransform: "uppercase",
+    letterSpacing: "1px",
   },
   grid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-    gap: "20px",
+    gap: "16px",
     marginBottom: "40px",
   },
+
+  // Banner
   banner: {
-    backgroundColor: "#166534",
-    color: "white",
-    borderRadius: "12px",
-    padding: "16px 24px",
+    background:
+      "linear-gradient(135deg, rgba(22,163,74,0.15) 0%, rgba(22,163,74,0.05) 100%)",
+    border: "1px solid rgba(22,163,74,0.2)",
+    borderRadius: "16px",
+    padding: "20px 32px",
     textAlign: "center",
     fontSize: "15px",
+    color: "rgba(255,255,255,0.7)",
     marginTop: "24px",
   },
 };
