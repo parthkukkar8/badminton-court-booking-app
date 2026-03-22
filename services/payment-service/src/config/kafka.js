@@ -2,7 +2,8 @@ const { Kafka } = require('kafkajs');
 
 const kafka = new Kafka({
   clientId: 'badminton-payment',
-  brokers: ['localhost:9092'],
+  // ← Use environment variable instead of hardcoded localhost
+  brokers: [process.env.KAFKA_BROKER || 'localhost:9092'],
 });
 
 const producer = kafka.producer();
@@ -12,7 +13,6 @@ const connectProducer = async () => {
   console.log('✅ Kafka producer connected');
 };
 
-// Publish event after payment confirmed
 const publishBookingConfirmed = async (bookingData) => {
   await producer.send({
     topic: 'booking.confirmed',

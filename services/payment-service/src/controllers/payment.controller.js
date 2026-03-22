@@ -38,6 +38,7 @@ const createOrder = async (req, res) => {
     });
 
   } catch (error) {
+    console.error('Create order error:', error.message);
     res.status(500).json({
       message: 'Failed to create payment order',
       error: error.message,
@@ -77,22 +78,31 @@ const verifyPayment = async (req, res) => {
 
     // Confirm booking in booking service
     const bookingRes = await axios.patch(
-      `http://localhost:3003/api/bookings/${bookingId}/confirm`
+      `http://booking-service:3003/api/bookings/${bookingId}/confirm`
     );
-
     const booking = bookingRes.data.booking;
 
-    // Publish Kafka event → notification service will send email
-    await publishBookingConfirmed({
-      bookingId,
-      userEmail: booking.userEmail,
-      userName: booking.userEmail.split('@')[0],
-      courtName: booking.courtName,
-      startTime: booking.startTime,
-      endTime: booking.endTime,
-      amount: booking.pricePerSlot,
-    });
+    console.log('✅ Booking confirmed:', booking._id);
 
+    // Publish Kafka event — wrapped in try/catch
+    // If Kafka fails → payment is still confirmed ✅
+    // Email just won't be sent — non critical
+    try {
+      await publishBookingConfirmed({
+        bookingId,
+        userEmail: booking.userEmail,
+        userName: booking.userEmail.split('@')[0],
+        courtName: booking.courtName,
+        startTime: booking.startTime,
+        endTime: booking.endTime,
+        amount: booking.pricePerSlot,
+      });
+    } catch (kafkaError) {
+      // Kafka failure should NOT fail the payment
+      console.error('❌ Kafka publish failed (non critical):', kafkaError.message);
+    }
+
+    // Always return success if payment + booking confirmed
     res.json({
       message: 'Payment verified successfully!',
       success: true,
@@ -100,6 +110,8 @@ const verifyPayment = async (req, res) => {
 
   } catch (error) {
     console.error('Verify payment error:', error.message);
+    console.error('Full error:', JSON.stringify(error, null, 2));
+    console.error('Stack:', error.stack);
     res.status(500).json({
       message: 'Payment verification failed',
       error: error.message,
